@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>道路缺陷检测系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding-top: 2rem;
+        }
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .image-container {
+            position: relative;
+            margin: 20px 0;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 15px;
+        }
+        .image-preview {
+            max-width: 100%;
+            max-height: 500px;
+            margin: 10px auto;
+            display: block;
+        }
+        .controls {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn-operation {
+            margin: 5px;
+            min-width: 120px;
+        }
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .result-container {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+        }
+        .image-box {
+            flex: 1;
+            text-align: center;
+        }
+        .image-box h4 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .info-panel {
+            background: #fff;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .param-slider {
+            width: 100%;
+        }
+        .tab-content {
+            padding: 15px;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+        }
+        .param-group {
+            margin-bottom: 1rem;
+        }
+        .param-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        .param-value {
+            display: inline-block;
+            min-width: 50px;
+            text-align: right;
+            margin-left: 10px;
+        }
+        .operation-group {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+        .operation-group h5 {
+            margin-bottom: 1rem;
+            color: #495057;
+        }
+        .image-actions {
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        .image-actions .btn {
+            padding: 5px 15px;
+            font-size: 0.9rem;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            display: none;
+        }
+        .operation-tips {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            max-width: 300px;
+            display: none;
+        }
+        .batch-process {
+            margin-top: 10px;
+        }
+        .batch-results {
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .batch-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+        }
+        .batch-item:hover {
+            background-color: #f8f9fa;
+        }
+        .batch-item.selected {
+            background-color: #e9ecef;
+        }
+        .batch-item .preview-thumbnail {
+            width: 50px;
+            height: 50px;
+            object-fit: cover;
+            margin-right: 10px;
+            border-radius: 4px;
+        }
+        .batch-item .item-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+        .batch-item .item-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .preview-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        .preview-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .preview-body {
+            display: flex;
+            gap: 20px;
+        }
+        .preview-image-container {
+            flex: 1;
+            text-align: center;
+        }
+        .preview-image {
+            max-width: 100%;
+            max-height: 70vh;
+            object-fit: contain;
+        }
+        .batch-item.success {
+            color: #28a745;
+        }
+        .batch-item.error {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <h1 class="text-center mb-4">道路缺陷检测系统</h1>
+        
+        <div class="controls">
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="mb-3">
+                        <label for="imageInput" class="form-label">选择图片</label>
+                        <input type="file" class="form-control" id="imageInput" accept=".jpg,.jpeg,.png,.bmp">
+                    </div>
+                    <div class="batch-process">
+                        <label for="batchInput" class="form-label">批量处理</label>
+                        <div class="mb-3">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="batchMethod" id="batchMethodAI" value="detect_ai" checked>
+                                <label class="form-check-label" for="batchMethodAI">AI检测</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="batchMethod" id="batchMethodTraditional" value="detect_defects">
+                                <label class="form-check-label" for="batchMethodTraditional">传统检测</label>
+                            </div>
+                        </div>
+                        <input type="file" class="form-control" id="batchInput" accept=".jpg,.jpeg,.png,.bmp" multiple>
+                        <div class="form-text">选择多个图片进行批量处理</div>
+                        <div class="batch-results" id="batchResults"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <!-- 图像增强操作组 -->
+                    <div class="operation-group">
+                        <h5><i class="fas fa-magic"></i> 图像增强</h5>
+                        <div class="param-group">
+                            <label for="brightness">亮度 <span class="param-value" id="brightnessValue">0</span></label>
+                            <input type="range" class="param-slider" id="brightness" min="-100" max="100" value="0">
+                        </div>
+                        <div class="param-group">
+                            <label for="contrast">对比度 <span class="param-value" id="contrastValue">1.00</span></label>
+                            <input type="range" class="param-slider" id="contrast" min="0" max="300" value="100">
+                        </div>
+                        <div class="d-flex flex-wrap">
+                            <button class="btn btn-primary btn-operation" onclick="processImage('adjust')">
+                                <i class="fas fa-sliders-h"></i> 应用调整
+                            </button>
+                            <button class="btn btn-success btn-operation" onclick="processImage('enhance')">
+                                <i class="fas fa-magic"></i> 自动增强
+                            </button>
+                            <button class="btn btn-info btn-operation" onclick="processImage('clahe')">
+                                <i class="fas fa-sun"></i> CLAHE增强
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 边缘检测操作组 -->
+                    <div class="operation-group">
+                        <h5><i class="fas fa-border-all"></i> 边缘检测</h5>
+                        <div class="param-group">
+                            <label for="cannyLow">低阈值 <span class="param-value" id="cannyLowValue">50</span></label>
+                            <input type="range" class="param-slider" id="cannyLow" min="0" max="255" value="50">
+                        </div>
+                        <div class="param-group">
+                            <label for="cannyHigh">高阈值 <span class="param-value" id="cannyHighValue">150</span></label>
+                            <input type="range" class="param-slider" id="cannyHigh" min="0" max="255" value="150">
+                        </div>
+                        <button class="btn btn-info btn-operation" onclick="processImage('detect_edges')">
+                            <i class="fas fa-border-all"></i> 边缘检测
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <!-- 形态学操作组 -->
+                    <div class="operation-group">
+                        <h5><i class="fas fa-shapes"></i> 形态学操作</h5>
+                        <div class="param-group">
+                            <label for="morphSize">核大小 <span class="param-value" id="morphSizeValue">3</span></label>
+                            <input type="range" class="param-slider" id="morphSize" min="1" max="21" value="3" step="2">
+                        </div>
+                        <div class="d-flex flex-wrap">
+                            <button class="btn btn-secondary btn-operation" onclick="processImage('morph', {morph_type: 'erode'})">腐蚀</button>
+                            <button class="btn btn-secondary btn-operation" onclick="processImage('morph', {morph_type: 'dilate'})">膨胀</button>
+                            <button class="btn btn-secondary btn-operation" onclick="processImage('morph', {morph_type: 'open'})">开运算</button>
+                            <button class="btn btn-secondary btn-operation" onclick="processImage('morph', {morph_type: 'close'})">闭运算</button>
+                            <button class="btn btn-secondary btn-operation" onclick="processImage('morph', {morph_type: 'gradient'})">形态学梯度</button>
+                        </div>
+                    </div>
+
+                    <!-- 缺陷检测操作组 -->
+                    <div class="operation-group">
+                        <h5><i class="fas fa-search"></i> 缺陷检测</h5>
+                        <div class="d-flex flex-wrap">
+                            <button class="btn btn-warning btn-operation" onclick="processImage('detect_defects')">
+                                <i class="fas fa-search"></i> 传统检测
+                            </button>
+                            <button class="btn btn-danger btn-operation" onclick="processImage('detect_ai')">
+                                <i class="fas fa-robot"></i> AI检测
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="result-container">
+            <div class="image-box">
+                <h4>原始图像</h4>
+                <div class="image-container">
+                    <img id="originalImage" class="image-preview">
+                    <div class="image-actions">
+                        <button class="btn btn-sm btn-outline-primary" onclick="copyImage('originalImage')">
+                            <i class="fas fa-copy"></i> 复制
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadImage('originalImage')">
+                            <i class="fas fa-download"></i> 下载
+                        </button>
+                    </div>
+                </div>
+                <div class="info-panel" id="originalInfo">
+                    <h5>原始图像信息</h5>
+                    <div id="originalImageInfo"></div>
+                </div>
+            </div>
+            <div class="image-box">
+                <h4>处理结果</h4>
+                <div class="image-container">
+                    <img id="resultImage" class="image-preview">
+                    <div class="image-actions">
+                        <button class="btn btn-sm btn-outline-primary" onclick="copyImage('resultImage')">
+                            <i class="fas fa-copy"></i> 复制
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="downloadImage('resultImage')">
+                            <i class="fas fa-download"></i> 下载
+                        </button>
+                    </div>
+                </div>
+                <div class="info-panel" id="resultInfo">
+                    <h5>结果信息</h5>
+                    <div id="resultImageInfo"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">处理中...</span>
+        </div>
+    </div>
+
+    <div class="operation-tips" id="operationTips"></div>
+
+    <div class="preview-modal" id="previewModal">
+        <div class="preview-content">
+            <div class="preview-header">
+                <h4>处理结果预览</h4>
+                <button type="button" class="btn-close" onclick="closePreviewModal()"></button>
+            </div>
+            <div class="preview-body">
+                <div class="preview-image-container">
+                    <h5>原始图像</h5>
+                    <img id="previewOriginal" class="preview-image">
+                </div>
+                <div class="preview-image-container">
+                    <h5>处理结果</h5>
+                    <img id="previewResult" class="preview-image">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let processingTimeout = null;
+        const PROCESSING_DELAY = 200;
+        let currentOperation = null;
+        let currentExtraParams = {};
+        let isBatchProcessing = false;
+        let batchImages = []; // 存储批处理图像数据
+        let currentBatchMethod = 'detect_ai'; // 默认使用AI检测
+        let processedResults = {}; // 存储不同方法的处理结果
+
+        // 操作提示
+        const operationTips = {
+            default: "选择图片并使用右侧工具进行处理",
+            adjust: "调整亮度和对比度，拖动滑块实时预览效果",
+            enhance: "自动增强图像质量",
+            clahe: "使用CLAHE算法增强图像对比度",
+            detect_edges: "调整Canny边缘检测的阈值，拖动滑块实时预览效果",
+            morph: "使用形态学操作处理图像，调整核大小以改变效果",
+            detect_defects: "使用传统计算机视觉方法检测道路缺陷",
+            detect_ai: "使用AI模型检测道路缺陷"
+        };
+
+        function showOperationTip(operation) {
+            const tip = operationTips[operation] || operationTips.default;
+            const tipElement = document.getElementById('operationTips');
+            tipElement.textContent = tip;
+            tipElement.style.display = 'block';
+            
+            // 3秒后隐藏提示
+            setTimeout(() => {
+                tipElement.style.display = 'none';
+            }, 3000);
+        }
+
+        // 复制图片到剪贴板
+        async function copyImage(imageId) {
+            const img = document.getElementById(imageId);
+            if (!img.src || img.src === window.location.href) {
+                showTooltip(img, '没有可复制的图像');
+                return;
+            }
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                
+                const blob = await new Promise(resolve => canvas.toBlob(resolve));
+                await navigator.clipboard.write([
+                    new ClipboardItem({
+                        'image/png': blob
+                    })
+                ]);
+                
+                showTooltip(img, '已复制到剪贴板');
+            } catch (err) {
+                showTooltip(img, '复制失败，请重试');
+                console.error('复制失败:', err);
+            }
+        }
+
+        // 下载图片
+        function downloadImage(imageId) {
+            const img = document.getElementById(imageId);
+            if (!img.src || img.src === window.location.href) {
+                showTooltip(img, '没有可下载的图像');
+                return;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            const link = document.createElement('a');
+            link.download = `road_defect_${imageId}_${new Date().getTime()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            showTooltip(img, '下载成功');
+        }
+
+        // 批量处理图片
+        async function processBatchImages(files) {
+            if (!files || files.length === 0) return;
+            
+            batchImages = []; // 清空之前的数据
+            processedResults = {}; // 清空之前的处理结果
+            const batchResults = document.getElementById('batchResults');
+            batchResults.innerHTML = '';
+            
+            // 添加进度显示
+            const progressDiv = document.createElement('div');
+            progressDiv.className = 'alert alert-info';
+            progressDiv.innerHTML = `正在加载图片：0/${files.length}`;
+            batchResults.appendChild(progressDiv);
+            
+            // 首先加载所有图片
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                try {
+                    const imageData = await readFileAsDataURL(file);
+                    batchImages.push({
+                        file: file,
+                        original: imageData,
+                        name: file.name,
+                        processed: null,
+                        info: null
+                    });
+                    progressDiv.innerHTML = `正在加载图片：${i + 1}/${files.length}`;
+                } catch (error) {
+                    console.error(`加载图片失败: ${file.name}`, error);
+                }
+            }
+            
+            // 开始处理图片
+            await processCurrentBatchMethod();
+        }
+
+        // 读取文件为DataURL
+        function readFileAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = e => reject(e);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // 处理当前选择的方法
+        async function processCurrentBatchMethod() {
+            if (batchImages.length === 0) return;
+            
+            const method = document.querySelector('input[name="batchMethod"]:checked').value;
+            currentBatchMethod = method;
+            
+            // 如果已经处理过，直接显示结果
+            if (processedResults[method]) {
+                displayProcessedResults(method);
+                return;
+            }
+            
+            const batchResults = document.getElementById('batchResults');
+            batchResults.innerHTML = '';
+            
+            const progressDiv = document.createElement('div');
+            progressDiv.className = 'alert alert-info';
+            progressDiv.innerHTML = `处理进度：0/${batchImages.length}`;
+            batchResults.appendChild(progressDiv);
+            
+            let successCount = 0;
+            let failCount = 0;
+            let currentResults = [];
+            
+            for (let i = 0; i < batchImages.length; i++) {
+                const imageData = batchImages[i];
+                const resultItem = document.createElement('div');
+                resultItem.className = 'batch-item processing';
+                batchResults.appendChild(resultItem);
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('image', imageData.file);
+                    formData.append('operation', method);
+                    
+                    const params = { ...getParams(), ...currentExtraParams };
+                    Object.keys(params).forEach(key => {
+                        formData.append(key, params[key]);
+                    });
+                    
+                    const response = await fetch('/process', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error);
+                    
+                    const processedData = {
+                        original: imageData.original,
+                        processed: 'data:image/jpeg;base64,' + data.result,
+                        name: imageData.name,
+                        info: data.info,
+                        success: true
+                    };
+                    
+                    currentResults.push(processedData);
+                    updateBatchItemDisplay(resultItem, processedData);
+                    successCount++;
+                } catch (error) {
+                    const errorData = {
+                        original: imageData.original,
+                        name: imageData.name,
+                        error: error.message,
+                        success: false
+                    };
+                    currentResults.push(errorData);
+                    
+                    resultItem.className = 'batch-item error';
+                    resultItem.innerHTML = `
+                        <div class="item-content">
+                            <img class="preview-thumbnail" src="${imageData.original}" alt="${imageData.name}">
+                            <div class="ms-2">
+                                <div>${imageData.name}</div>
+                                <small class="text-danger">处理失败: ${error.message}</small>
+                            </div>
+                        </div>
+                    `;
+                    failCount++;
+                }
+                
+                progressDiv.innerHTML = `处理进度：${i + 1}/${batchImages.length} (成功: ${successCount}, 失败: ${failCount})`;
+            }
+            
+            // 存储当前方法的处理结果
+            processedResults[method] = {
+                results: currentResults,
+                stats: { total: batchImages.length, success: successCount, fail: failCount }
+            };
+            
+            // 更新最终结果
+            progressDiv.className = 'alert ' + (failCount === 0 ? 'alert-success' : 'alert-warning');
+            progressDiv.innerHTML = `处理完成：共 ${batchImages.length} 个文件 (成功: ${successCount}, 失败: ${failCount})`;
+        }
+
+        // 显示已处理的结果
+        function displayProcessedResults(method) {
+            const results = processedResults[method];
+            if (!results) return;
+            
+            const batchResults = document.getElementById('batchResults');
+            batchResults.innerHTML = '';
+            
+            // 显示统计信息
+            const progressDiv = document.createElement('div');
+            progressDiv.className = 'alert ' + (results.stats.fail === 0 ? 'alert-success' : 'alert-warning');
+            progressDiv.innerHTML = `处理完成：共 ${results.stats.total} 个文件 (成功: ${results.stats.success}, 失败: ${results.stats.fail})`;
+            batchResults.appendChild(progressDiv);
+            
+            // 显示每个结果
+            results.results.forEach(result => {
+                const resultItem = document.createElement('div');
+                if (result.success) {
+                    updateBatchItemDisplay(resultItem, result);
+                } else {
+                    resultItem.className = 'batch-item error';
+                    resultItem.innerHTML = `
+                        <div class="item-content">
+                            <img class="preview-thumbnail" src="${result.original}" alt="${result.name}">
+                            <div class="ms-2">
+                                <div>${result.name}</div>
+                                <small class="text-danger">处理失败: ${result.error}</small>
+                            </div>
+                        </div>
+                    `;
+                }
+                batchResults.appendChild(resultItem);
+            });
+        }
+
+        // 监听处理方法变化
+        document.querySelectorAll('input[name="batchMethod"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (batchImages.length > 0) {
+                    const method = this.value;
+                    if (processedResults[method]) {
+                        displayProcessedResults(method);
+                    } else {
+                        processCurrentBatchMethod();
+                    }
+                }
+            });
+        });
+
+        // 监听参数变化
+        document.querySelectorAll('.param-slider').forEach(slider => {
+            slider.addEventListener('input', function() {
+                const value = this.value;
+                const valueSpan = document.getElementById(this.id + 'Value');
+                if (this.id === 'contrast') {
+                    valueSpan.textContent = (value / 100).toFixed(2);
+                } else {
+                    valueSpan.textContent = value;
+                }
+
+                // 清除之前的定时器
+                clearTimeout(processingTimeout);
+                
+                // 设置新的定时器
+                processingTimeout = setTimeout(() => {
+                    if (isBatchProcessing && batchImages.length > 0) {
+                        processCurrentBatchMethod();
+                    } else if (currentOperation) {
+                        processImage(currentOperation, currentExtraParams);
+                    } else if (this.id === 'brightness' || this.id === 'contrast') {
+                        processImage('adjust');
+                    } else if (this.id === 'cannyLow' || this.id === 'cannyHigh') {
+                        processImage('detect_edges');
+                    }
+                }, PROCESSING_DELAY);
+            });
+        });
+
+        function showLoading() {
+            document.querySelector('.loading').style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.querySelector('.loading').style.display = 'none';
+        }
+
+        function getParams() {
+            return {
+                brightness: document.getElementById('brightness').value,
+                contrast: (document.getElementById('contrast').value / 100).toFixed(2),
+                canny_low: document.getElementById('cannyLow').value,
+                canny_high: document.getElementById('cannyHigh').value,
+                morph_size: document.getElementById('morphSize').value
+            };
+        }
+
+        function updateImageInfo(info, targetId) {
+            const infoDiv = document.getElementById(targetId);
+            let html = '';
+            if (info.size) {
+                html += `<p>尺寸: ${info.size}</p>`;
+            }
+            if (info.mean !== undefined) {
+                html += `<p>平均值: ${info.mean.toFixed(2)}</p>`;
+                html += `<p>标准差: ${info.std.toFixed(2)}</p>`;
+                html += `<p>最小值: ${info.min}</p>`;
+                html += `<p>最大值: ${info.max}</p>`;
+            }
+            if (info.cracks !== undefined) {
+                html += `<p>检测到的裂缝: ${info.cracks}</p>`;
+            }
+            if (info.potholes !== undefined) {
+                html += `<p>检测到的坑洼: ${info.potholes}</p>`;
+            }
+            if (info.water !== undefined) {
+                html += `<p>检测到的积水: ${info.water}</p>`;
+            }
+            infoDiv.innerHTML = html;
+        }
+
+        function processImage(operation, extraParams = {}) {
+            showOperationTip(operation);
+            
+            const fileInput = document.getElementById('imageInput');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('请先选择图片');
+                return;
+            }
+
+            // 更新当前操作状态
+            currentOperation = operation;
+            currentExtraParams = extraParams;
+
+            const formData = new FormData();
+            formData.append('image', fileInput.files[0]);
+            formData.append('operation', operation);
+
+            // 添加参数
+            const params = { ...getParams(), ...extraParams };
+            Object.keys(params).forEach(key => {
+                formData.append(key, params[key]);
+            });
+
+            if (!isBatchProcessing) showLoading();
+
+            fetch('/process', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                if (!data.result) {
+                    throw new Error('处理结果为空');
+                }
+                
+                // 创建新的Image对象用于预加载
+                const newImage = new Image();
+                newImage.onload = function() {
+                    document.getElementById('resultImage').src = this.src;
+                    if (!isBatchProcessing) hideLoading();
+                };
+                newImage.onerror = function() {
+                    throw new Error('图像加载失败');
+                };
+                newImage.src = 'data:image/jpeg;base64,' + data.result;
+                
+                if (data.info) {
+                    updateImageInfo(data.info, 'resultImageInfo');
+                }
+            })
+            .catch(error => {
+                alert('处理失败: ' + error.message);
+                if (!isBatchProcessing) hideLoading();
+            });
+        }
+
+        // 预览选择的图片
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    // 重置当前操作状态
+                    currentOperation = null;
+                    currentExtraParams = {};
+                    
+                    // 创建新的Image对象用于预加载
+                    const newImage = new Image();
+                    newImage.onload = function() {
+                        document.getElementById('originalImage').src = this.src;
+                        document.getElementById('resultImage').src = '';
+                        document.getElementById('resultImageInfo').innerHTML = '';
+                        
+                        updateImageInfo({
+                            size: `${this.width}x${this.height}`
+                        }, 'originalImageInfo');
+                    };
+                    newImage.src = e.target.result;
+                };
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+
+        function showPreview(data) {
+            const modal = document.getElementById('previewModal');
+            const originalImg = document.getElementById('previewOriginal');
+            const resultImg = document.getElementById('previewResult');
+            
+            originalImg.src = data.original;
+            resultImg.src = data.result;
+            
+            // 如果有检测信息，显示在预览框中
+            if (data.info) {
+                const infoHtml = document.createElement('div');
+                infoHtml.className = 'mt-3';
+                let detectionInfo = '<h6>检测结果：</h6>';
+                if (data.info.cracks !== undefined) {
+                    detectionInfo += `<p>检测到的裂缝: ${data.info.cracks}</p>`;
+                }
+                if (data.info.potholes !== undefined) {
+                    detectionInfo += `<p>检测到的坑洼: ${data.info.potholes}</p>`;
+                }
+                if (data.info.water !== undefined) {
+                    detectionInfo += `<p>检测到的积水: ${data.info.water}</p>`;
+                }
+                infoHtml.innerHTML = detectionInfo;
+                
+                const previewContent = modal.querySelector('.preview-content');
+                const existingInfo = previewContent.querySelector('.detection-info');
+                if (existingInfo) {
+                    existingInfo.remove();
+                }
+                infoHtml.className = 'detection-info mt-3';
+                previewContent.appendChild(infoHtml);
+            }
+            
+            modal.style.display = 'flex';
+        }
+
+        function closePreviewModal() {
+            document.getElementById('previewModal').style.display = 'none';
+        }
+
+        // 点击模态框背景关闭
+        document.getElementById('previewModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closePreviewModal();
+            }
+        });
+
+        // 监听批量处理文件选择
+        document.getElementById('batchInput').addEventListener('change', function(e) {
+            if (e.target.files && e.target.files.length > 0) {
+                processBatchImages(e.target.files);
+            }
+        });
+
+        // 更新批处理项的显示
+        function updateBatchItemDisplay(resultItem, imageData) {
+            let detectionInfo = '';
+            if (imageData.info) {
+                if (imageData.info.cracks !== undefined) {
+                    detectionInfo += `裂缝: ${imageData.info.cracks} `;
+                }
+                if (imageData.info.potholes !== undefined) {
+                    detectionInfo += `坑洼: ${imageData.info.potholes} `;
+                }
+                if (imageData.info.water !== undefined) {
+                    detectionInfo += `积水: ${imageData.info.water}`;
+                }
+            }
+            
+            resultItem.className = 'batch-item success';
+            resultItem.innerHTML = `
+                <div class="item-content">
+                    <img class="preview-thumbnail" src="${imageData.original}" alt="${imageData.name}">
+                    <div class="ms-2">
+                        <div>${imageData.name}</div>
+                        <small class="text-success">${detectionInfo}</small>
+                    </div>
+                </div>
+                <div class="item-actions">
+                    <button class="btn btn-sm btn-outline-primary" onclick='showPreview(${JSON.stringify({
+                        original: imageData.original,
+                        result: imageData.processed,
+                        fileName: imageData.name,
+                        info: imageData.info
+                    })})'>
+                        <i class="fas fa-eye"></i> 预览
+                    </button>
+                    <a class="btn btn-sm btn-outline-success" href="${imageData.processed}" download="processed_${imageData.name}">
+                        <i class="fas fa-download"></i> 下载
+                    </a>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html> 
