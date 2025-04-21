@@ -101,6 +101,8 @@ def process_image_task(image_data, operation, params=None):
                 processor.fft_radius = int(params['fft_radius'])
             if 'morph_size' in params:
                 processor.morph_size = int(params['morph_size'])
+            if 'detection_mode' in params:
+                processor.detection_mode = params['detection_mode']
         
         # 根据操作类型处理图像
         result = None
@@ -111,10 +113,28 @@ def process_image_task(image_data, operation, params=None):
             result = processor.enhance_image()
         elif operation == 'detect_edges':
             result = processor.detect_edges()
+            # 如果启用了边缘连接，进行处理
+            if params.get('edge_connect_enabled', False):
+                gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+                connected = processor.connect_edges(gray, 
+                                                 params.get('min_threshold', 5),
+                                                 params.get('max_threshold', 15))
+                result = cv2.cvtColor(connected, cv2.COLOR_GRAY2BGR)
         elif operation == 'detect_defects':
             result, defects = processor.detect_defects_intelligent()
         elif operation == 'detect_ai':
+            # 确保加载了分割模型（如果需要）
+            if params.get('detection_mode') in ['segment', 'both'] and not processor.segment_model:
+                try:
+                    processor.load_segment_model()
+                except Exception as e:
+                    logger.warning(f"加载分割模型失败: {str(e)}")
+            
             result, defects = processor.detect_defects_ai()
+            # 添加检测模式和统计信息到返回结果
+            info['detection_mode'] = processor.detection_mode
+            if defects and 'stats' in defects:
+                info['stats'] = defects['stats']
         elif operation == 'adjust':
             result = processor.adjust_brightness_contrast(
                 processor.brightness, 
@@ -152,7 +172,8 @@ def process_image_task(image_data, operation, params=None):
             # 如果有缺陷检测结果
             if defects:
                 for defect_type in defects:
-                    info[defect_type] = len(defects[defect_type])
+                    if defect_type != 'stats':  # 跳过统计信息
+                        info[defect_type] = len(defects[defect_type])
             
             # 将结果转换为base64
             _, buffer = cv2.imencode('.jpg', result)
@@ -212,7 +233,11 @@ def process():
             'canny_high': request.form.get('canny_high', 150, type=int),
             'fft_radius': request.form.get('fft_radius', 30, type=int),
             'morph_size': request.form.get('morph_size', 3, type=int),
-            'morph_type': request.form.get('morph_type', 'erode')
+            'morph_type': request.form.get('morph_type', 'erode'),
+            'edge_connect_enabled': request.form.get('edge_connect_enabled', 'false') == 'true',
+            'min_threshold': request.form.get('min_threshold', 5, type=int),
+            'max_threshold': request.form.get('max_threshold', 15, type=int),
+            'detection_mode': request.form.get('detection_mode', 'segment')
         }
         
         # 直接从内存中读取图像数据

@@ -26,10 +26,12 @@ class ImageProcessor:
         
         # 添加YOLOv12相关属性
         self.yolo_model = None
+        self.segment_model = None  # 添加分割模型
         self.yolo_classes = ['pothole']  # 默认类别
-        self.yolo_colors = {'pothole': (0, 255, 0), 'default': (0, 0, 255)}
+        self.yolo_colors = {'pothole': (0, 0, 255), 'default': (0, 0, 255)}
         self.yolo_confidence = 0.3
         self.yolo_iou = 0.45
+        self.detection_mode = 'bbox'  # 新增检测模式：'bbox', 'segment', 'both'
         
     def load_image(self, image_path):
         """加载图片并进行错误处理"""
@@ -472,8 +474,8 @@ class ImageProcessor:
             print(f"加载YOLOv12模型失败: {str(e)}")
             return False
             
-    def detect_with_yolo(self, image=None, save_path=None):
-        """使用YOLOv12进行缺陷检测"""
+    def detect_with_yolo(self, image=None):
+        """使用YOLOv12进行检测"""
         if not YOLO_AVAILABLE:
             raise ImportError("未安装ultralytics库，无法使用YOLOv12功能")
             
@@ -481,7 +483,6 @@ class ImageProcessor:
             if not self.load_yolo_model():
                 raise RuntimeError("YOLOv12模型未加载")
                 
-        # 使用当前图像或提供的图像
         if image is None:
             if self.current_image is None:
                 raise ValueError("没有可处理的图像")
@@ -494,64 +495,241 @@ class ImageProcessor:
         try:
             # 推理预测
             results = self.yolo_model.predict(temp_path, conf=self.yolo_confidence, iou=self.yolo_iou)
+            result = results[0]
             
-            # 绘制检测结果
-            for box in results[0].boxes:
-                cls_id = int(box.cls)
-                conf = float(box.conf)
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                
-                # 获取颜色和标签
-                class_name = self.yolo_classes[cls_id] if cls_id < len(self.yolo_classes) else "unknown"
-                color = self.yolo_colors.get(class_name, self.yolo_colors['default'])
-                label = f"{class_name} {conf:.2f}"
-                
-                # 绘制边界框
-                cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
-                
-                # 绘制标签背景
-                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-                cv2.rectangle(image, (x1, y1 - th - 4), (x1 + tw, y1), color, -1)
-                
-                # 添加文本
-                cv2.putText(image, label, (x1, y1 - 5),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            # 创建结果图像
+            result_image = image.copy()
+            areas = []
             
-            # 保存结果
-            if save_path:
-                cv2.imwrite(save_path, image)
-                
-            return image, results[0].boxes
+            # 处理检测结果
+            if len(result.boxes) > 0:
+                for box in result.boxes:
+                    # 获取边界框坐标
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    # 计算面积
+                    area = (x2 - x1) * (y2 - y1)
+                    areas.append(area)
+                    
+                    # 获取类别和置信度
+                    cls_id = int(box.cls)
+                    conf = float(box.conf)
+                    
+                    # 获取标签
+                    class_name = self.yolo_classes[cls_id] if cls_id < len(self.yolo_classes) else "unknown"
+                    label = f"{class_name} {conf:.2f}"
+                    
+                    # 使用红色绘制边界框
+                    cv2.rectangle(result_image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                    
+                    # 绘制标签背景
+                    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+                    cv2.rectangle(result_image, (x1, y1 - th - 4), (x1 + tw, y1), (0, 0, 255), -1)
+                    
+                    # 添加白色文本
+                    cv2.putText(result_image, label, (x1, y1 - 5),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            
+            return result_image, result.boxes, areas
             
         finally:
-            # 清理临时文件
             if os.path.exists(temp_path):
                 os.remove(temp_path)
+
+    def load_segment_model(self, model_path=None):
+        """加载分割模型"""
+        if not YOLO_AVAILABLE:
+            raise ImportError("未安装ultralytics库，无法使用分割功能")
+            
+        if model_path is None:
+            # 使用默认模型路径
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(current_dir, 'segment', 'train3', 'weights', 'best.pt')
+            
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"分割模型文件不存在: {model_path}")
+            
+        try:
+            self.segment_model = YOLO(model_path)
+            return True
+        except Exception as e:
+            print(f"加载分割模型失败: {str(e)}")
+            return False
+
+    def detect_with_segment(self, image=None):
+        """使用分割模型进行检测"""
+        if not YOLO_AVAILABLE:
+            raise ImportError("未安装ultralytics库，无法使用分割功能")
+            
+        if self.segment_model is None:
+            if not self.load_segment_model():
+                raise RuntimeError("分割模型未加载")
                 
+        if image is None:
+            if self.current_image is None:
+                raise ValueError("没有可处理的图像")
+            image = self.current_image.copy()
+            
+        # 保存临时图像用于处理
+        temp_path = "temp_for_segment.jpg"
+        cv2.imwrite(temp_path, image)
+        
+        try:
+            # 推理预测
+            results = self.segment_model.predict(
+                temp_path,
+                conf=self.yolo_confidence,
+                iou=self.yolo_iou,
+                imgsz=640
+            )
+            
+            # 获取标注后的图像和掩码面积
+            result = results[0]
+            mask_areas = []
+            
+            if hasattr(result, 'masks') and result.masks is not None:
+                annotated_image = result.plot()
+                # 计算每个掩码的像素数
+                for mask in result.masks.data:
+                    mask_np = mask.cpu().numpy()
+                    area = np.sum(mask_np)  # 计算掩码中为True的像素数
+                    mask_areas.append(int(area))
+            else:
+                annotated_image = image.copy()
+            
+            return annotated_image, result, mask_areas
+            
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
     def detect_defects_ai(self):
         """使用AI方法进行缺陷检测"""
         if self.current_image is None:
-            return self.current_image, {'cracks': [], 'potholes': [], 'water': []}
+            return self.current_image, {'cracks': [], 'potholes': [], 'water': [], 'stats': {}}
             
         try:
-            # 使用YOLOv12进行检测
-            result_image, boxes = self.detect_with_yolo()
+            result_image = self.current_image.copy()
+            defects = {
+                'cracks': [], 
+                'potholes': [], 
+                'water': [], 
+                'stats': {
+                    'bbox': {'count': 0, 'areas': []},
+                    'segment': {'count': 0, 'areas': []}
+                }
+            }
             
-            # 将YOLO检测结果转换为标准格式，只保留pothole类别
-            defects = {'cracks': [], 'potholes': [], 'water': []}
-            
-            for box in boxes:
-                cls_id = int(box.cls)
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
+            if self.detection_mode in ['bbox', 'both']:
+                # 使用YOLOv12进行边界框检测
+                bbox_image, boxes, bbox_areas = self.detect_with_yolo()
+                result_image = bbox_image
                 
-                # 只处理pothole类别
-                if cls_id < len(self.yolo_classes):
-                    class_name = self.yolo_classes[cls_id]
-                    if class_name == 'pothole':
-                        defects['potholes'].append((x1, y1, x2-x1, y2-y1))
+                # 处理边界框结果
+                pothole_count = 0
+                for box, area in zip(boxes, bbox_areas):
+                    cls_id = int(box.cls)
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    
+                    if cls_id < len(self.yolo_classes):
+                        class_name = self.yolo_classes[cls_id]
+                        if class_name == 'pothole':
+                            defects['potholes'].append((x1, y1, x2-x1, y2-y1))
+                            pothole_count += 1
+                
+                defects['stats']['bbox'] = {
+                    'count': pothole_count,
+                    'areas': bbox_areas
+                }
+            
+            if self.detection_mode in ['segment', 'both']:
+                # 使用分割模型进行检测
+                segment_image, segment_results, mask_areas = self.detect_with_segment()
+                
+                # 更新分割统计信息
+                if hasattr(segment_results, 'boxes'):
+                    segment_count = len(segment_results.boxes)
+                else:
+                    segment_count = 0
+                
+                defects['stats']['segment'] = {
+                    'count': segment_count,
+                    'areas': mask_areas
+                }
+                
+                if self.detection_mode == 'segment':
+                    result_image = segment_image
+                elif self.detection_mode == 'both':
+                    # 确保图像大小一致
+                    if segment_image.shape != result_image.shape:
+                        segment_image = cv2.resize(segment_image, (result_image.shape[1], result_image.shape[0]))
+                    alpha = 0.5
+                    result_image = cv2.addWeighted(result_image, 1-alpha, segment_image, alpha, 0)
             
             return result_image, defects
             
         except Exception as e:
             print(f"AI检测出错: {str(e)}")
-            return self.current_image, {'cracks': [], 'potholes': [], 'water': []} 
+            return self.current_image, {'cracks': [], 'potholes': [], 'water': [], 'stats': {}} 
+        
+    def connect_edges(self, edges, min_threshold=5, max_threshold=15):
+        """优化版边缘连接算法，使用网格空间分区加速，支持阈值范围"""
+        # 使用类属性作为默认值
+        min_threshold = min_threshold if min_threshold is not None else self.connect_threshold
+        max_threshold = max_threshold if max_threshold is not None else self.connect_max_threshold
+        
+        # 获取轮廓（兼容OpenCV 3.4.2）
+        if cv2.__version__.startswith('3'):
+            _, contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        else:
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        if len(contours) < 2:
+            return edges
+        
+        # 收集端点并构建空间网格
+        endpoints = []
+        grid = {}
+        grid_size = max(max_threshold, 5)  # 网格大小为最大阈值
+        
+        for cnt in contours:
+            if len(cnt) >= 2:
+                pt_start = tuple(cnt[0][0])
+                pt_end = tuple(cnt[-1][0])
+                endpoints.extend([pt_start, pt_end])
+        
+        # 构建网格空间索引
+        for idx, (x, y) in enumerate(endpoints):
+            grid_x = x // grid_size
+            grid_y = y // grid_size
+            if (grid_x, grid_y) not in grid:
+                grid[(grid_x, grid_y)] = []
+            grid[(grid_x, grid_y)].append(idx)
+        
+        # 创建输出图像
+        connected = np.zeros_like(edges)
+        cv2.drawContours(connected, contours, -1, 255, 1)
+        
+        # 遍历所有端点，仅在相邻网格中查找邻近点
+        for i, (x, y) in enumerate(endpoints):
+            current_grid = (x // grid_size, y // grid_size)
+            
+            # 检查当前网格和8个相邻网格
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    neighbor_grid = (current_grid[0] + dx, current_grid[1] + dy)
+                    if neighbor_grid not in grid:
+                        continue
+                    
+                    # 检查该网格内的所有点
+                    for j in grid[neighbor_grid]:
+                        if j <= i:  # 避免重复检查
+                            continue
+                        
+                        # 计算距离
+                        x2, y2 = endpoints[j]
+                        distance = np.sqrt((x - x2)**2 + (y - y2)**2)
+                        # 如果距离在阈值范围内，则连接
+                        if min_threshold <= distance <= max_threshold:
+                            cv2.line(connected, (x, y), (x2, y2), 255, 1)
+        
+        return connected

@@ -143,17 +143,94 @@ class ModernGUI(QMainWindow):
         self.save_btn = QPushButton("💾 保存结果")
         
         # 添加批处理按钮和选择框到文件操作组
+        batch_group = QGroupBox("批处理设置")
+        batch_group.setStyleSheet("""
+            QGroupBox {
+                border: 2px solid #3498db;
+                border-radius: 6px;
+                margin-top: 6px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                color: #3498db;
+            }
+        """)
+        batch_layout = QGridLayout()
+        batch_layout.setSpacing(10)
+        
+        # 添加处理方法选择
+        method_label = QLabel("处理方法:")
+        method_label.setStyleSheet("color: #2c3e50;")
         self.process_method = QComboBox()
         self.process_method.addItems(["传统方法", "AI方法"])
-        self.process_method.setCurrentText("传统方法")
+        self.process_method.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #bdc3c7;
+                border-radius: 3px;
+                padding: 3px;
+                min-width: 100px;
+                background: white;
+            }
+            QComboBox:hover {
+                border-color: #3498db;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox::down-arrow {
+                image: url(down_arrow.png);
+                width: 12px;
+                height: 12px;
+            }
+        """)
         
-        batch_process_btn = QPushButton("📦 批量处理文件夹")
-        batch_process_btn.setStyleSheet("background-color: #9b59b6;")
+        # 添加AI检测模式选择
+        ai_mode_label = QLabel("AI检测模式:")
+        ai_mode_label.setStyleSheet("color: #2c3e50;")
+        self.ai_mode = QComboBox()
+        self.ai_mode.addItems(["边界框检测", "分割检测", "混合检测"])
+        self.ai_mode.setEnabled(False)  # 初始禁用
+        self.ai_mode.setStyleSheet(self.process_method.styleSheet())
+        
+        # 添加批处理按钮
+        batch_btn = QPushButton("📦 批量处理")
+        batch_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 5px 15px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #8e44ad;
+            }
+            QPushButton:pressed {
+                background-color: #6c3483;
+            }
+        """)
+        
+        # 使用网格布局排列组件
+        batch_layout.addWidget(method_label, 0, 0)
+        batch_layout.addWidget(self.process_method, 0, 1)
+        batch_layout.addWidget(ai_mode_label, 1, 0)
+        batch_layout.addWidget(self.ai_mode, 1, 1)
+        batch_layout.addWidget(batch_btn, 2, 0, 1, 2, Qt.AlignCenter)
+        
+        # 设置列拉伸
+        batch_layout.setColumnStretch(1, 1)
+        
+        batch_group.setLayout(batch_layout)
+        file_layout.addWidget(batch_group)
         
         file_layout.addWidget(self.load_btn)
         file_layout.addWidget(QLabel("批处理方法:"))
         file_layout.addWidget(self.process_method)
-        file_layout.addWidget(batch_process_btn)
+        file_layout.addWidget(batch_btn)
         file_layout.addWidget(self.save_btn)
         
         file_group.setLayout(file_layout)
@@ -162,6 +239,10 @@ class ModernGUI(QMainWindow):
         self.load_btn.clicked.connect(self.load_image)
         self.save_btn.clicked.connect(self.save_result)
         # batch_process_btn.clicked.connect(self.batch_process)
+        
+        # 连接信号
+        self.process_method.currentTextChanged.connect(self.on_process_method_changed)
+        # batch_btn.clicked.connect(self.batch_process)
         
         # 2. 图像分析组
         analysis_group = QGroupBox("图像分析")
@@ -244,6 +325,46 @@ class ModernGUI(QMainWindow):
         self.morph_size_slider.setRange(3, 21)
         self.morph_size_value = QLabel("3")
         
+        # 添加边缘连接控制组件
+        edge_connect_group = QGroupBox("边缘连接")
+        edge_connect_layout = QGridLayout()
+        edge_connect_layout.setVerticalSpacing(8)
+        edge_connect_layout.setHorizontalSpacing(10)
+        
+        # 启用复选框
+        self.edge_connect_checkbox = QCheckBox("启用边缘连接")
+        self.edge_connect_checkbox.setChecked(False)
+        edge_connect_layout.addWidget(self.edge_connect_checkbox, 0, 0, 1, 3)
+        
+        # 最小阈值
+        min_threshold_label = QLabel("最小连接阈值:")
+        self.min_threshold_slider = QSlider(Qt.Horizontal)
+        self.min_threshold_slider.setRange(1, 50)
+        self.min_threshold_slider.setValue(5)
+        self.min_threshold_slider.setEnabled(False)
+        self.min_threshold_value = QLabel("5")
+        edge_connect_layout.addWidget(min_threshold_label, 1, 0)
+        edge_connect_layout.addWidget(self.min_threshold_slider, 1, 1)
+        edge_connect_layout.addWidget(self.min_threshold_value, 1, 2)
+        
+        # 最大阈值
+        max_threshold_label = QLabel("最大连接阈值:")
+        self.max_threshold_slider = QSlider(Qt.Horizontal)
+        self.max_threshold_slider.setRange(5, 100)
+        self.max_threshold_slider.setValue(15)
+        self.max_threshold_slider.setEnabled(False)
+        self.max_threshold_value = QLabel("15")
+        edge_connect_layout.addWidget(max_threshold_label, 2, 0)
+        edge_connect_layout.addWidget(self.max_threshold_slider, 2, 1)
+        edge_connect_layout.addWidget(self.max_threshold_value, 2, 2)
+        
+        edge_connect_group.setLayout(edge_connect_layout)
+        
+        # 连接信号
+        self.edge_connect_checkbox.stateChanged.connect(self.on_edge_connect_changed)
+        self.min_threshold_slider.valueChanged.connect(self.update_min_threshold)
+        self.max_threshold_slider.valueChanged.connect(self.update_max_threshold)
+        
         params_layout.addWidget(canny_low_label, 0, 0)
         params_layout.addWidget(self.canny_low_slider, 0, 1)
         params_layout.addWidget(self.canny_low_value, 0, 2)
@@ -256,6 +377,7 @@ class ModernGUI(QMainWindow):
         params_layout.addWidget(morph_size_label, 3, 0)
         params_layout.addWidget(self.morph_size_slider, 3, 1)
         params_layout.addWidget(self.morph_size_value, 3, 2)
+        params_layout.addWidget(edge_connect_group, 4, 0, 1, 3)
         
         advanced_params.setLayout(params_layout)
         process_layout.addWidget(advanced_params)
@@ -310,6 +432,21 @@ class ModernGUI(QMainWindow):
         detect_layout = QVBoxLayout()
         detect_layout.setSpacing(8)
         
+        # 添加检测模式选择
+        mode_group = QGroupBox("检测模式")
+        mode_layout = QHBoxLayout()
+        
+        self.bbox_radio = QRadioButton("边界框")
+        self.segment_radio = QRadioButton("分割")
+        self.both_radio = QRadioButton("混合")
+        self.bbox_radio.setChecked(True)  # 默认选择边界框模式
+        
+        mode_layout.addWidget(self.bbox_radio)
+        mode_layout.addWidget(self.segment_radio)
+        mode_layout.addWidget(self.both_radio)
+        mode_group.setLayout(mode_layout)
+        detect_layout.addWidget(mode_group)
+        
         # 检测按钮
         detect_all_btn = QPushButton("🔍 全部缺陷检测")
         detect_all_btn.setStyleSheet("background-color: #27ae60;")
@@ -339,7 +476,7 @@ class ModernGUI(QMainWindow):
         detect_group.setLayout(detect_layout)
         
         # 连接批处理按钮信号
-        batch_process_btn.clicked.connect(self.batch_process)
+        batch_btn.clicked.connect(self.batch_process)
         
         # 5. 重置按钮
         reset_btn = QPushButton("🔄 重置图像")
@@ -1044,6 +1181,17 @@ class ModernGUI(QMainWindow):
         # 执行边缘检测
         result = self.processor.detect_edges()
         
+        # 如果启用了边缘连接，则进行连接处理
+        if self.edge_connect_checkbox.isChecked():
+            min_threshold = self.min_threshold_slider.value()
+            max_threshold = self.max_threshold_slider.value()
+            # 将BGR转为灰度图
+            gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+            # 进行边缘连接
+            connected = self.processor.connect_edges(gray, min_threshold, max_threshold)
+            # 转回BGR
+            result = cv2.cvtColor(connected, cv2.COLOR_GRAY2BGR)
+        
         # 更新显示
         self.update_result_display(result, 'edge')
         self.statusBar().showMessage('边缘检测完成')
@@ -1495,15 +1643,33 @@ class ModernGUI(QMainWindow):
             progress.setValue(10)
             QApplication.processEvents()
             
-            # 尝试加载YOLO模型
-            if self.processor.yolo_model is None:
-                progress.setLabelText("正在加载AI模型...")
+            # 设置检测模式
+            if self.bbox_radio.isChecked():
+                self.processor.detection_mode = 'bbox'
+            elif self.segment_radio.isChecked():
+                self.processor.detection_mode = 'segment'
+            else:
+                self.processor.detection_mode = 'both'
+            
+            # 尝试加载模型
+            if self.processor.detection_mode in ['bbox', 'both'] and self.processor.yolo_model is None:
+                progress.setLabelText("正在加载边界框检测模型...")
                 progress.setValue(20)
                 QApplication.processEvents()
                 
                 if not self.processor.load_yolo_model():
                     progress.close()
-                    QMessageBox.warning(self, "警告", "AI模型加载失败，请检查模型文件是否存在")
+                    QMessageBox.warning(self, "警告", "边界框检测模型加载失败，请检查模型文件是否存在")
+                    return
+            
+            if self.processor.detection_mode in ['segment', 'both'] and self.processor.segment_model is None:
+                progress.setLabelText("正在加载分割模型...")
+                progress.setValue(30)
+                QApplication.processEvents()
+                
+                if not self.processor.load_segment_model():
+                    progress.close()
+                    QMessageBox.warning(self, "警告", "分割模型加载失败，请检查模型文件是否存在")
                     return
             
             progress.setLabelText("正在进行目标检测...")
@@ -1524,9 +1690,31 @@ class ModernGUI(QMainWindow):
             # 更新显示
             self.update_result_display(result, 'defect')
             
-            # 显示检测结果（只显示坑洼检测结果）
+            # 显示检测结果
             result_text = f"AI检测结果:\n"
-            result_text += f"坑洼: {len(defects['potholes'])} 处\n"
+            
+            # 显示边界框检测结果
+            if self.processor.detection_mode in ['bbox', 'both']:
+                bbox_stats = defects['stats']['bbox']
+                result_text += f"\n边界框检测:\n"
+                result_text += f"- 检测到坑洼: {bbox_stats['count']} 处\n"
+                if bbox_stats['count'] > 0:
+                    result_text += "- 各区域面积(像素):\n"
+                    for i, area in enumerate(bbox_stats['areas'], 1):
+                        result_text += f"  区域{i}: {area}\n"
+                    result_text += f"- 总检测区域: {sum(bbox_stats['areas'])} 像素\n"
+            
+            # 显示分割检测结果
+            if self.processor.detection_mode in ['segment', 'both']:
+                segment_stats = defects['stats']['segment']
+                result_text += f"\n分割检测:\n"
+                result_text += f"- 检测到目标: {segment_stats['count']} 处\n"
+                if segment_stats['count'] > 0:
+                    result_text += "- 各区域掩码面积(像素):\n"
+                    for i, area in enumerate(segment_stats['areas'], 1):
+                        result_text += f"  区域{i}: {area}\n"
+                    result_text += f"- 总掩码面积: {sum(segment_stats['areas'])} 像素\n"
+            
             self.result_text.setText(result_text)
             
             # 更新直方图和状态
@@ -1537,9 +1725,6 @@ class ModernGUI(QMainWindow):
             
         except ImportError:
             QMessageBox.warning(self, "警告", "未安装ultralytics库，无法使用AI检测功能")
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"AI检测失败: {str(e)}")
-            self.statusBar().showMessage('AI检测失败')
 
     def batch_process(self):
         """批量处理图片"""
@@ -1566,23 +1751,50 @@ class ModernGUI(QMainWindow):
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
         
-        # 创建输出文件夹
+        # 获取选择的处理方法和模式
         method = self.process_method.currentText()
+        
+        # 如果是AI方法，设置检测模式
+        if method == "AI方法":
+            mode = self.ai_mode.currentText()
+            if mode == "边界框检测":
+                self.processor.detection_mode = 'bbox'
+            elif mode == "分割检测":
+                self.processor.detection_mode = 'segment'
+            else:
+                self.processor.detection_mode = 'both'
+        
+        # 创建输出文件夹
         output_dir = os.path.join(dir_path, f'processed_{method.lower().replace("方法", "")}')
+        if method == "AI方法":
+            output_dir = os.path.join(output_dir, f'{self.processor.detection_mode.lower()}')
         os.makedirs(output_dir, exist_ok=True)
         
         # 如果是AI方法，预先加载模型
-        if method == "AI方法" and self.processor.yolo_model is None:
-            progress.setLabelText("正在加载AI模型...")
-            progress.setValue(0)
-            QApplication.processEvents()
-            
-            if not self.processor.load_yolo_model():
-                QMessageBox.warning(self, "警告", "AI模型加载失败，请检查模型文件是否存在")
-                # 恢复状态
-                self.processor.original_image = saved_original_image
-                self.processor.current_image = saved_current_image
-                return
+        if method == "AI方法":
+            if self.processor.detection_mode in ['bbox', 'both'] and self.processor.yolo_model is None:
+                progress.setLabelText("正在加载边界框检测模型...")
+                progress.setValue(0)
+                QApplication.processEvents()
+                
+                if not self.processor.load_yolo_model():
+                    QMessageBox.warning(self, "警告", "边界框检测模型加载失败，请检查模型文件是否存在")
+                    # 恢复状态
+                    self.processor.original_image = saved_original_image
+                    self.processor.current_image = saved_current_image
+                    return
+                    
+            if self.processor.detection_mode in ['segment', 'both'] and self.processor.segment_model is None:
+                progress.setLabelText("正在加载分割模型...")
+                progress.setValue(0)
+                QApplication.processEvents()
+                
+                if not self.processor.load_segment_model():
+                    QMessageBox.warning(self, "警告", "分割模型加载失败，请检查模型文件是否存在")
+                    # 恢复状态
+                    self.processor.original_image = saved_original_image
+                    self.processor.current_image = saved_current_image
+                    return
         
         # 处理每张图片
         processed_count = 0
@@ -1590,7 +1802,7 @@ class ModernGUI(QMainWindow):
             for i, image_path in enumerate(image_files):
                 if progress.wasCanceled():  # 如果用户取消，直接退出循环
                     break
-                
+                    
                 try:
                     # 更新进度
                     progress.setValue(i)
@@ -1618,9 +1830,30 @@ class ModernGUI(QMainWindow):
                     info_path = os.path.splitext(output_path)[0] + '_info.txt'
                     with open(info_path, 'w', encoding='utf-8') as f:
                         f.write(f"检测方法: {method}\n")
+                        if method == "AI方法":
+                            f.write(f"检测模式: {mode}\n")
                         f.write(f"检测结果:\n")
                         if method == "AI方法":
-                            f.write(f"坑洼: {len(defects['potholes'])} 处\n")
+                            if 'stats' in defects:
+                                if self.processor.detection_mode in ['bbox', 'both']:
+                                    bbox_stats = defects['stats']['bbox']
+                                    f.write(f"边界框检测:\n")
+                                    f.write(f"- 检测到坑洼: {bbox_stats['count']} 处\n")
+                                    if bbox_stats['count'] > 0:
+                                        f.write("- 各区域面积(像素):\n")
+                                        for i, area in enumerate(bbox_stats['areas'], 1):
+                                            f.write(f"  区域{i}: {area}\n")
+                                
+                                if self.processor.detection_mode in ['segment', 'both']:
+                                    segment_stats = defects['stats']['segment']
+                                    f.write(f"\n分割检测:\n")
+                                    f.write(f"- 检测到目标: {segment_stats['count']} 处\n")
+                                    if segment_stats['count'] > 0:
+                                        f.write("- 各区域掩码面积(像素):\n")
+                                        for i, area in enumerate(segment_stats['areas'], 1):
+                                            f.write(f"  区域{i}: {area}\n")
+                            else:
+                                f.write(f"坑洼: {len(defects['potholes'])} 处\n")
                         else:
                             f.write(f"裂缝: {len(defects['cracks'])} 处\n")
                             f.write(f"坑洼: {len(defects['potholes'])} 处\n")
@@ -1631,7 +1864,7 @@ class ModernGUI(QMainWindow):
                 except Exception as e:
                     print(f"处理图片 {image_path} 时出错: {str(e)}")
                     continue
-        
+            
         finally:
             # 恢复原始状态
             self.processor.original_image = saved_original_image
@@ -1662,6 +1895,38 @@ class ModernGUI(QMainWindow):
             self.statusBar().showMessage('图像已复制到剪贴板')
         else:
             self.statusBar().showMessage('没有选中的图像可复制')
+
+    def on_process_method_changed(self, text):
+        """处理方法改变时的响应"""
+        self.ai_mode.setEnabled(text == "AI方法")
+
+    def on_edge_connect_changed(self, state):
+        """处理边缘连接启用状态改变"""
+        enabled = state == Qt.Checked
+        self.min_threshold_slider.setEnabled(enabled)
+        self.max_threshold_slider.setEnabled(enabled)
+        if self.processor.current_image is not None:
+            self.detect_edges()  # 重新执行边缘检测
+    
+    def update_min_threshold(self):
+        """更新最小连接阈值"""
+        if self.processor.current_image is None:
+            return
+        value = self.min_threshold_slider.value()
+        self.min_threshold_value.setText(str(value))
+        if value >= self.max_threshold_slider.value():
+            self.max_threshold_slider.setValue(value + 1)
+        self.detect_edges()  # 重新执行边缘检测
+    
+    def update_max_threshold(self):
+        """更新最大连接阈值"""
+        if self.processor.current_image is None:
+            return
+        value = self.max_threshold_slider.value()
+        self.max_threshold_value.setText(str(value))
+        if value <= self.min_threshold_slider.value():
+            self.min_threshold_slider.setValue(value - 1)
+        self.detect_edges()  # 重新执行边缘检测
 
 class ImageViewerDialog(QDialog):
     def __init__(self, image, parent=None):
