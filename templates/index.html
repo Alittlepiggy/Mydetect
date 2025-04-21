@@ -290,6 +290,25 @@
                             <label for="cannyHigh">高阈值 <span class="param-value" id="cannyHighValue">150</span></label>
                             <input type="range" class="param-slider" id="cannyHigh" min="0" max="255" value="150">
                         </div>
+                        
+                        <!-- 添加边缘连接控制 -->
+                        <div class="param-group border-top pt-3 mt-3">
+                            <div class="form-check mb-2">
+                                <input type="checkbox" class="form-check-input" id="edgeConnectEnabled">
+                                <label class="form-check-label" for="edgeConnectEnabled">启用边缘连接</label>
+                            </div>
+                            <div id="edgeConnectParams" style="display: none;">
+                                <div class="param-group">
+                                    <label for="minThreshold">最小连接阈值 <span class="param-value" id="minThresholdValue">5</span></label>
+                                    <input type="range" class="param-slider" id="minThreshold" min="1" max="50" value="5" disabled>
+                                </div>
+                                <div class="param-group">
+                                    <label for="maxThreshold">最大连接阈值 <span class="param-value" id="maxThresholdValue">15</span></label>
+                                    <input type="range" class="param-slider" id="maxThreshold" min="5" max="100" value="15" disabled>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <button class="btn btn-info btn-operation" onclick="processImage('detect_edges')">
                             <i class="fas fa-border-all"></i> 边缘检测
                         </button>
@@ -316,6 +335,19 @@
                     <!-- 缺陷检测操作组 -->
                     <div class="operation-group">
                         <h5><i class="fas fa-search"></i> 缺陷检测</h5>
+                        <div class="param-group mb-3">
+                            <label class="form-label">AI检测模式</label>
+                            <div class="btn-group" role="group">
+                                <input type="radio" class="btn-check" name="detectionMode" id="bboxMode" value="bbox" checked>
+                                <label class="btn btn-outline-primary" for="bboxMode">边界框</label>
+                                
+                                <input type="radio" class="btn-check" name="detectionMode" id="segmentMode" value="segment">
+                                <label class="btn btn-outline-primary" for="segmentMode">分割</label>
+                                
+                                <input type="radio" class="btn-check" name="detectionMode" id="bothMode" value="both">
+                                <label class="btn btn-outline-primary" for="bothMode">混合</label>
+                            </div>
+                        </div>
                         <div class="d-flex flex-wrap">
                             <button class="btn btn-warning btn-operation" onclick="processImage('detect_defects')">
                                 <i class="fas fa-search"></i> 传统检测
@@ -715,7 +747,11 @@
                 contrast: (document.getElementById('contrast').value / 100).toFixed(2),
                 canny_low: document.getElementById('cannyLow').value,
                 canny_high: document.getElementById('cannyHigh').value,
-                morph_size: document.getElementById('morphSize').value
+                morph_size: document.getElementById('morphSize').value,
+                edge_connect_enabled: document.getElementById('edgeConnectEnabled').checked,
+                min_threshold: document.getElementById('minThreshold').value,
+                max_threshold: document.getElementById('maxThreshold').value,
+                detection_mode: document.querySelector('input[name="detectionMode"]:checked')?.value || 'bbox'
             };
         }
 
@@ -740,6 +776,36 @@
             if (info.water !== undefined) {
                 html += `<p>检测到的积水: ${info.water}</p>`;
             }
+            
+            // 添加检测模式和统计信息的显示
+            if (info.detection_mode) {
+                const modeMap = {
+                    'bbox': '边界框',
+                    'segment': '分割',
+                    'both': '混合'
+                };
+                html += `<p>检测模式: ${modeMap[info.detection_mode]}</p>`;
+                
+                if (info.stats) {
+                    if (info.stats.bbox) {
+                        html += `<p>边界框检测:</p>`;
+                        html += `<p>- 数量: ${info.stats.bbox.count}</p>`;
+                        if (info.stats.bbox.areas && info.stats.bbox.areas.length > 0) {
+                            const avgArea = info.stats.bbox.areas.reduce((a, b) => a + b, 0) / info.stats.bbox.areas.length;
+                            html += `<p>- 平均面积: ${avgArea.toFixed(2)}</p>`;
+                        }
+                    }
+                    if (info.stats.segment) {
+                        html += `<p>分割检测:</p>`;
+                        html += `<p>- 数量: ${info.stats.segment.count}</p>`;
+                        if (info.stats.segment.areas && info.stats.segment.areas.length > 0) {
+                            const avgArea = info.stats.segment.areas.reduce((a, b) => a + b, 0) / info.stats.segment.areas.length;
+                            html += `<p>- 平均面积: ${avgArea.toFixed(2)}</p>`;
+                        }
+                    }
+                }
+            }
+            
             infoDiv.innerHTML = html;
         }
 
@@ -922,6 +988,64 @@
                 </div>
             `;
         }
+
+        // 添加边缘连接控制逻辑
+        document.getElementById('edgeConnectEnabled').addEventListener('change', function(e) {
+            const enabled = e.target.checked;
+            const paramsDiv = document.getElementById('edgeConnectParams');
+            const minThreshold = document.getElementById('minThreshold');
+            const maxThreshold = document.getElementById('maxThreshold');
+            
+            paramsDiv.style.display = enabled ? 'block' : 'none';
+            minThreshold.disabled = !enabled;
+            maxThreshold.disabled = !enabled;
+            
+            if (currentOperation === 'detect_edges') {
+                processImage('detect_edges');
+            }
+        });
+
+        // 添加阈值联动逻辑
+        document.getElementById('minThreshold').addEventListener('input', function() {
+            const value = parseInt(this.value);
+            document.getElementById('minThresholdValue').textContent = value;
+            const maxThreshold = document.getElementById('maxThreshold');
+            if (value >= parseInt(maxThreshold.value)) {
+                maxThreshold.value = value + 1;
+                document.getElementById('maxThresholdValue').textContent = value + 1;
+            }
+            if (currentOperation === 'detect_edges') {
+                clearTimeout(processingTimeout);
+                processingTimeout = setTimeout(() => {
+                    processImage('detect_edges');
+                }, PROCESSING_DELAY);
+            }
+        });
+
+        document.getElementById('maxThreshold').addEventListener('input', function() {
+            const value = parseInt(this.value);
+            document.getElementById('maxThresholdValue').textContent = value;
+            const minThreshold = document.getElementById('minThreshold');
+            if (value <= parseInt(minThreshold.value)) {
+                minThreshold.value = value - 1;
+                document.getElementById('minThresholdValue').textContent = value - 1;
+            }
+            if (currentOperation === 'detect_edges') {
+                clearTimeout(processingTimeout);
+                processingTimeout = setTimeout(() => {
+                    processImage('detect_edges');
+                }, PROCESSING_DELAY);
+            }
+        });
+
+        // 添加检测模式变化监听
+        document.querySelectorAll('input[name="detectionMode"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (currentOperation === 'detect_ai') {
+                    processImage('detect_ai');
+                }
+            });
+        });
     </script>
 </body>
 </html> 
