@@ -13,6 +13,11 @@ python main.py
 ``
 python web_server.py
 ``
+
+项目有两个branch，分别是main和other，other支持了相关检测（需要调节超参数）
+
+注意：``segment/train3/weights/best.pt``文件编码方式和其他项目不同，需要单独下载。
+
 ## 详细功能说明
 
 ### 1. 图像输入输出
