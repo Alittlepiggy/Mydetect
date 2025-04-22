@@ -280,7 +280,7 @@ class ModernGUI(QMainWindow):
         self.brightness_slider = QSlider(Qt.Horizontal)
         self.brightness_slider.setRange(-100, 100)
         self.brightness_value = QLabel("0")
-        
+
         contrast_label = QLabel("对比度:")
         self.contrast_slider = QSlider(Qt.Horizontal)
         self.contrast_slider.setRange(0, 300)
@@ -446,6 +446,19 @@ class ModernGUI(QMainWindow):
         mode_layout.addWidget(self.both_radio)
         mode_group.setLayout(mode_layout)
         detect_layout.addWidget(mode_group)
+        
+        # 添加传统方法选择组
+        traditional_group = QGroupBox("传统方法选择")
+        traditional_layout = QHBoxLayout()
+        
+        self.intelligent_radio = QRadioButton("智能检测")
+        self.matlab_radio = QRadioButton("MATLAB方法")
+        self.intelligent_radio.setChecked(True)  # 默认选择智能检测
+        
+        traditional_layout.addWidget(self.intelligent_radio)
+        traditional_layout.addWidget(self.matlab_radio)
+        traditional_group.setLayout(traditional_layout)
+        detect_layout.addWidget(traditional_group)
         
         # 检测按钮
         detect_all_btn = QPushButton("🔍 全部缺陷检测")
@@ -1147,27 +1160,42 @@ class ModernGUI(QMainWindow):
         """检测所有缺陷"""
         if self.processor.original_image is None:
             return
-        
-        # 获取要处理的图像
-        source_image = self.get_current_source_image()
-        self.processor.current_image = source_image
-        
-        # 执行检测
-        result, defects = self.processor.detect_defects_intelligent()
-        
-        # 更新显示
-        self.update_result_display(result, 'defect')
-        
-        # 显示检测结果
-        result_text = f"检测结果:\n"
-        result_text += f"裂缝: {len(defects['cracks'])} 处\n"
-        result_text += f"坑洼: {len(defects['potholes'])} 处\n"
-        result_text += f"积水: {len(defects['water'])} 处"
-        self.result_text.setText(result_text)
-        
-        # 更新直方图和状态
-        self.update_histogram()
-        self.statusBar().showMessage('缺陷检测完成')
+
+        try:
+            # 获取要处理的图像
+            source_image = self.get_current_source_image()
+            if source_image is None:
+                QMessageBox.warning(self, "警告", "无法获取源图像")
+                return
+                
+            self.processor.current_image = source_image
+            
+            # 根据选择的传统方法执行检测
+            if self.matlab_radio.isChecked():
+                # 使用MATLAB方法
+                result, defects = self.processor.defectdetect_matlab()
+                # 显示检测结果
+                result_text = f"检测结果:\n"
+                result_text += f"检测到 {len(defects)} 个缺陷区域"
+            else:
+                # 使用智能检测方法
+                result, defects = self.processor.detect_defects_intelligent()
+                # 显示检测结果
+                result_text = f"检测结果:\n"
+                result_text += f"裂缝: {len(defects['cracks'])} 处\n"
+                result_text += f"坑洼: {len(defects['potholes'])} 处\n"
+                result_text += f"积水: {len(defects['water'])} 处"
+            
+            # 更新显示
+            self.update_result_display(result, 'defect')
+            self.result_text.setText(result_text)
+            
+            # 更新直方图和状态
+            self.update_histogram()
+            self.statusBar().showMessage('缺陷检测完成')
+            
+        except Exception as e:
+            QMessageBox.critical(self, '错误', f'检测过程中出错：{str(e)}')
 
     def detect_edges(self):
         """边缘检测"""

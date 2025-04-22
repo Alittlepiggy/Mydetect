@@ -733,3 +733,207 @@ class ImageProcessor:
                             cv2.line(connected, (x, y), (x2, y2), 255, 1)
         
         return connected
+
+
+    def defectdetect_matlab(self):
+        """
+        使用传统方法进行缺陷检测。
+        :return: 检测结果图像和缺陷区域框的列表。
+        """
+        # 预处理
+        img = self.current_image.copy()
+        gray = self.preprocess_image(img)
+        ref_block = self.getRef(gray)
+
+        if ref_block is None:
+            return img, []
+
+        # 滑动窗口参数
+        window_size = 3
+        stride = 1
+
+        # 存储检测到的缺陷区域
+        defect_boxes = []
+        height, width = gray.shape
+
+        # 滑动窗口检测
+        for y in range(0, height - window_size + 1, stride):
+            for x in range(0, width - window_size + 1, stride):
+                # 提取当前窗口
+                window = gray[y:y + window_size, x:x + window_size]
+
+                # 计算相似度
+                sim = self.getsim(ref_block, window)
+
+                # 如果相似度低于阈值，认为是缺陷
+                if sim < 0.9:  # 可调整阈值
+                    defect_boxes.append([x, y, x + window_size, y + window_size])
+
+        # 转换为 NumPy 数组
+        if len(defect_boxes) > 0:
+            defect_boxes = np.array(defect_boxes)
+
+            # 合并重叠的框
+            defect_boxes = self.merge_boxes(defect_boxes)
+
+            # 过滤不合适大小的框
+            defect_boxes = self.filter_boxes(defect_boxes)
+
+            # 在原图上标记缺陷
+            result_img = img.copy()
+            for box in defect_boxes:
+                cv2.rectangle(result_img, (box[0], box[1]), (box[2], box[3]), (0, 0, 255), 2)
+        else:
+            defect_boxes = np.array([])
+            result_img = img.copy()
+
+        return result_img, defect_boxes
+
+    def preprocess_image(self, img):
+        """
+        图像预处理：灰度化和归一化。
+        :param img: 输入图像（BGR 格式）。
+        :return: 归一化的灰度图像。
+        """
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray_double = gray.astype(np.float32) / 255.0
+        return gray_double
+
+    def getBad(self, img):
+        """
+        获取图像中的坏点图。
+        :param img: 输入灰度图像。
+        :return: 坏点图（二值图像）。
+        """
+        h, w = img.shape
+        win_len = 10
+        scale = np.zeros((h, w))
+
+        for i in range(0, h - win_len + 1, win_len):
+            for j in range(0, w - win_len + 1, win_len):
+                region = img[i:i + win_len, j:j + win_len]
+                mx = np.max(region)
+                mn = np.min(region)
+                # 避免除零，同时确保计算结果有意义
+                if mn == 0:
+                    mn = 1e-6  # 使用极小值代替零
+                scale[i:i + win_len, j:j + win_len] = (mx * 3.0) / float(mn)
+
+        # 归一化处理
+        scale = cv2.normalize(scale, None, 0, 1, cv2.NORM_MINMAX)
+
+        # 确保所有值为非负数
+        scale = np.clip(scale, 0, None)
+
+        gamma = 0.5
+        J = np.power(scale, gamma)
+
+        # 使用均值作为阈值生成二值图像
+        return (J > np.mean(J)).astype(np.uint8)
+
+    def getRef(self, pic):
+        """
+        获取参考块。
+        :param pic: 输入灰度图像。
+        :return: 参考块。
+        """
+        bad = self.getBad(pic)
+        h, w = pic.shape
+        ref_block = np.zeros((3, 3))
+        cnt = 0
+
+        for i in range(0, h - 3, 3):
+            for j in range(0, w - 3, 3):
+                tmp = bad[i:i + 3, j:j + 3]
+                if np.min(tmp) == 1:
+                    ref_block += self.normalize(pic[i:i + 3, j:j + 3])
+                    cnt += 1
+
+        if cnt > 0:
+            ref_block /= cnt
+        return ref_block
+
+    def normalize(self, x):
+        """
+        归一化函数。
+        :param x: 输入数组。
+        :return: 归一化后的数组。
+        """
+        norm = np.linalg.norm(x)
+        if norm == 0:
+            return x
+        return x / norm
+
+    def getsim(self, ref, x):
+        """
+        计算相似度。
+        :param ref: 参考块。
+        :param x: 当前窗口。
+        :return: 最大相似度值。
+        """
+        href, wref = ref.shape
+        hx, wx = x.shape
+        hout = href - hx + 1
+        wout = wref - wx + 1
+        steph = hx // 2
+        stepw = wx // 2
+        S = np.zeros((hout, wout))
+        for i in range(0, hout, steph):
+            for j in range(0, wout, stepw):
+                slice_ref = ref[i:i + hx, j:j + wx]
+                S[i, j] = np.sum(self.normalize(slice_ref) * self.normalize(x))
+        return np.max(S)
+
+    def merge_boxes(self, boxes):
+        """
+        合并重叠的矩形框。
+        :param boxes: 输入的矩形框列表。
+        :return: 合并后的矩形框列表。
+        """
+        if len(boxes) == 0:
+            return []
+
+        merged = []
+        while len(boxes) > 0:
+            r = boxes[0]
+            boxes = boxes[1:]
+            overlap = True
+
+            while overlap:
+                overlap_idx = self.findRectOverlap(r, boxes)
+                if len(overlap_idx) == 0:
+                    overlap = False
+                else:
+                    # 合并所有重叠的
+                    r[0] = min([r[0]] + [boxes[i][0] for i in overlap_idx])
+                    r[1] = min([r[1]] + [boxes[i][1] for i in overlap_idx])
+                    r[2] = max([r[2]] + [boxes[i][2] for i in overlap_idx])
+                    r[3] = max([r[3]] + [boxes[i][3] for i in overlap_idx])
+                    boxes = np.delete(boxes, overlap_idx, axis=0)
+
+            merged.append(r)
+
+        return np.array(merged)
+
+    def findRectOverlap(self, r, rects):
+        """
+        判断哪些矩形与 r 有交集。
+        :param r: 当前矩形框。
+        :param rects: 其他矩形框列表。
+        :return: 重叠矩形框的索引列表。
+        """
+        idx = []
+        for i, rect in enumerate(rects):
+            if not (rect[0] > r[2] or rect[2] < r[0] or rect[1] > r[3] or rect[3] < r[1]):
+                idx.append(i)
+        return idx
+
+    def filter_boxes(self, boxes, min_area=100):
+        """
+        过滤太小的矩形框。
+        :param boxes: 输入的矩形框列表。
+        :param min_area: 最小面积阈值。
+        :return: 过滤后的矩形框列表。
+        """
+        areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+        return boxes[areas >= min_area]
